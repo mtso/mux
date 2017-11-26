@@ -1917,84 +1917,138 @@ func TestNoMatchMethodErrorHandler(t *testing.T) {
 }
 
 type subrouterMethodTest struct {
-	method string
-	flag   int
+	title            string
+	router           *Router
+	flags            []bool
+	reset            func()
+	methods          []string
+	method           string
+	path             string
+	redirectLocation string
 }
-
-var subrouterTestMethods = []string{http.MethodGet, http.MethodPost, http.MethodDelete}
 
 // TestSameRouteHandler creates three sub-routers under the same route
 // for different HTTP methods: GET and HEAD, POST, and DELETE. A different
 // handler that trips its sentinel value is registered for each sub-router.
 func TestSameRouteHandler(t *testing.T) {
-	tests := []subrouterMethodTest{
-		// {
-		// 	router: r,
-		// 	request: http.NewRequest(http.MethodPost, "http://localhost/foo", nil),
-		// 	flags: fooFlags,
-		// 	reset: resetFooFlags,
-		// },
-		{
-			method: http.MethodGet,
-			flag:   0,
-		},
-		{
-			method: http.MethodPost,
-			flag:   1,
-		},
-		{
-			method: http.MethodDelete,
-			flag:   2,
-		},
-	}
-
-	flags := []bool{false, false, false}
-	resetFlags := func() {
-		for i := 0; i < len(flags); i++ {
-			flags[i] = false
+	flags1 := []bool{false, false, false}
+	router1 := NewRouter()
+	router1.Methods(http.MethodGet, http.MethodHead).Subrouter().HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags1[0] = true })
+	router1.Methods(http.MethodPost).Subrouter().HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags1[1] = true })
+	router1.Methods(http.MethodDelete).Subrouter().HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags1[2] = true })
+	methods1 := []string{http.MethodGet, http.MethodPost, http.MethodDelete}
+	flags1reset := func() {
+		for i := 0; i < len(flags1); i++ {
+			flags1[i] = false
 		}
 	}
 
-	r := NewRouter()
-	get := r.Methods(http.MethodGet, http.MethodHead).Subrouter()
-	post := r.Methods(http.MethodPost).Subrouter()
-	del := r.Methods(http.MethodDelete).Subrouter()
-	get.HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags[0] = true })
-	post.HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags[1] = true })
-	del.HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags[2] = true })
-
-	// Check at least one handler is called and that the setup works.
-	req, _ := http.NewRequest(http.MethodPost, "http://localhost/foo", nil)
-	match := new(RouteMatch)
-	matched := r.Match(req, match)
-	if !matched {
-		t.Fatalf("Expected at least one handler to match")
-	}
-	r.ServeHTTP(NewRecorder(), req)
-	if !flags[0] && !flags[1] && !flags[2] {
-		t.Fatalf("Expected a handler to have been called")
+	flags2 := []bool{false, false, false}
+	router2 := NewRouter()
+	sub2 := router2.PathPrefix("/").Subrouter()
+	sub2.StrictSlash(true).Path("/foo").Methods(http.MethodGet).HandlerFunc(func(http.ResponseWriter, *http.Request) { flags2[0] = true })
+	sub2.StrictSlash(true).Path("/foo/").Methods(http.MethodPost).HandlerFunc(func(http.ResponseWriter, *http.Request) { flags2[1] = true })
+	sub2.StrictSlash(true).Path("/foo").Methods(http.MethodPut).HandlerFunc(func(http.ResponseWriter, *http.Request) { flags2[2] = true })
+	methods2 := []string{http.MethodGet, http.MethodPost, http.MethodPut}
+	flags2reset := func() {
+		for i := 0; i < len(flags2); i++ {
+			flags2[i] = false
+		}
 	}
 
-	resetFlags()
-	for _, tc := range tests {
-		req, _ := http.NewRequest(tc.method, "http://localhost/foo", nil)
-		r.ServeHTTP(NewRecorder(), req)
+	tests := []subrouterMethodTest{
+		{
+			title:   "Call POST on router1",
+			router:  router1,
+			flags:   flags1,
+			reset:   flags1reset,
+			methods: methods1,
+			method:  http.MethodPost,
+			path:    "http://localhost/foo",
+		},
+		{
+			title:   "Call DELETE on router1",
+			router:  router1,
+			flags:   flags1,
+			reset:   flags1reset,
+			methods: methods1,
+			method:  http.MethodDelete,
+			path:    "http://localhost/foo",
+		},
 
-		var calledIndex int = -1
-		var targetIndex int = -1
-		for i, f := range flags {
-			if f && i != tc.flag {
+		{
+			title:            "Call POST on router2",
+			router:           router2,
+			flags:            flags2,
+			reset:            flags2reset,
+			methods:          methods2,
+			method:           http.MethodPost,
+			path:             "http://localhost/foo",
+			redirectLocation: "http://localhost/foo/",
+		},
+		{
+			title:   "Call POST on router2",
+			router:  router2,
+			flags:   flags2,
+			reset:   flags2reset,
+			methods: methods2,
+			method:  http.MethodPost,
+			path:    "http://localhost/foo/",
+		},
+		{
+			title:   "Call GET on router2",
+			router:  router2,
+			flags:   flags2,
+			reset:   flags2reset,
+			methods: methods2,
+			method:  http.MethodGet,
+			path:    "http://localhost/foo",
+		},
+		{
+			title:            "Call GET on router2",
+			router:           router2,
+			flags:            flags2,
+			reset:            flags2reset,
+			methods:          methods2,
+			method:           http.MethodGet,
+			path:             "http://localhost/foo/",
+			redirectLocation: "http://localhost/foo",
+		},
+	}
+
+	for _, test := range tests {
+		test.reset()
+
+		req, _ := http.NewRequest(test.method, test.path, nil)
+		resp := NewRecorder()
+		test.router.ServeHTTP(resp, req)
+		calledIndex := -1
+		targetIndex := -1
+
+		for i, flag := range test.flags {
+			if flag {
 				calledIndex = i
-			} else if !f && i == tc.flag {
+			}
+		}
+		for i, method := range test.methods {
+			if method == test.method {
 				targetIndex = i
 			}
 		}
 
-		if calledIndex > 0 || targetIndex > 0 {
-			t.Errorf("Expected %s handler to be called, but got %s", subrouterTestMethods[targetIndex], subrouterTestMethods[calledIndex])
+		isRedirect := resp.Code == http.StatusMovedPermanently || resp.Code == http.StatusFound
+		t.Errorf("%s", resp.HeaderMap.Get("Location"))
+		if isRedirect {
+			if resp.HeaderMap.Get("Location") != test.redirectLocation {
+				t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called %s", test.title, test.method, resp.HeaderMap.Get("Location"))
+			}
+		} else {
+			if calledIndex < 0 {
+				t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called", test.title, test.method)
+			} else if calledIndex != targetIndex {
+				t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called, but %s was called", test.title, test.method, test.methods[calledIndex])
+			}
 		}
-
-		resetFlags()
 	}
 }
 
