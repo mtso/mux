@@ -1916,6 +1916,88 @@ func TestNoMatchMethodErrorHandler(t *testing.T) {
 	}
 }
 
+type subrouterMethodTest struct {
+	method string
+	flag   int
+}
+
+var subrouterTestMethods = []string{http.MethodGet, http.MethodPost, http.MethodDelete}
+
+// TestSameRouteHandler creates three sub-routers under the same route
+// for different HTTP methods: GET and HEAD, POST, and DELETE. A different
+// handler that trips its sentinel value is registered for each sub-router.
+func TestSameRouteHandler(t *testing.T) {
+	tests := []subrouterMethodTest{
+		// {
+		// 	router: r,
+		// 	request: http.NewRequest(http.MethodPost, "http://localhost/foo", nil),
+		// 	flags: fooFlags,
+		// 	reset: resetFooFlags,
+		// },
+		{
+			method: http.MethodGet,
+			flag:   0,
+		},
+		{
+			method: http.MethodPost,
+			flag:   1,
+		},
+		{
+			method: http.MethodDelete,
+			flag:   2,
+		},
+	}
+
+	flags := []bool{false, false, false}
+	resetFlags := func() {
+		for i := 0; i < len(flags); i++ {
+			flags[i] = false
+		}
+	}
+
+	r := NewRouter()
+	get := r.Methods(http.MethodGet, http.MethodHead).Subrouter()
+	post := r.Methods(http.MethodPost).Subrouter()
+	del := r.Methods(http.MethodDelete).Subrouter()
+	get.HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags[0] = true })
+	post.HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags[1] = true })
+	del.HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags[2] = true })
+
+	// Check at least one handler is called and that the setup works.
+	req, _ := http.NewRequest(http.MethodPost, "http://localhost/foo", nil)
+	match := new(RouteMatch)
+	matched := r.Match(req, match)
+	if !matched {
+		t.Fatalf("Expected at least one handler to match")
+	}
+	r.ServeHTTP(NewRecorder(), req)
+	if !flags[0] && !flags[1] && !flags[2] {
+		t.Fatalf("Expected a handler to have been called")
+	}
+
+	resetFlags()
+	for _, tc := range tests {
+		req, _ := http.NewRequest(tc.method, "http://localhost/foo", nil)
+		r.ServeHTTP(NewRecorder(), req)
+
+		var calledIndex int = -1
+		var targetIndex int = -1
+		for i, f := range flags {
+			if f && i != tc.flag {
+				calledIndex = i
+			} else if !f && i == tc.flag {
+				targetIndex = i
+			}
+		}
+
+		if calledIndex > 0 || targetIndex > 0 {
+			t.Errorf("Expected %s handler to be called, but got %s", subrouterTestMethods[targetIndex], subrouterTestMethods[calledIndex])
+		}
+
+		resetFlags()
+	}
+}
+
 func TestErrMatchNotFound(t *testing.T) {
 	emptyHandler := func(w http.ResponseWriter, r *http.Request) {}
 
