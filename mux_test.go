@@ -1930,7 +1930,7 @@ type methodsSubrouterTest struct {
 }
 
 // TestMethodsSubrouter tests the correct matching of handlers for
-// subrouters created after a route's method is set.
+// subrouters registered after a route's method-matcher is set.
 func TestMethodsSubrouter(t *testing.T) {
 	flags1 := make([]bool, 3)
 	router1 := NewRouter()
@@ -2160,7 +2160,7 @@ func testMethodsSubrouter(t *testing.T, test methodsSubrouterTest) {
 	switch {
 	case isRedirect:
 		if resp.HeaderMap.Get("Location") != test.redirectTo {
-			t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called %s", test.title, test.method, resp.HeaderMap.Get("Location"))
+			t.Errorf("(%v) Expected %s route-match to redirect to %s, but got %s", test.title, test.method, test.redirectTo, resp.HeaderMap.Get("Location"))
 		}
 	case isNotAllowedMethod:
 		if isCalled {
@@ -2168,9 +2168,9 @@ func testMethodsSubrouter(t *testing.T, test methodsSubrouterTest) {
 		}
 	default:
 		if calledIndex < 0 {
-			t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called", test.title, test.method)
+			t.Errorf("(%v) Expected %s handler to be called, but no handler was called", test.title, test.method)
 		} else if calledIndex != targetIndex {
-			t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called, but %s was called", test.title, test.method, test.methods[calledIndex])
+			t.Errorf("(%v) Expected %s handler to be called, but %s handler was called", test.title, test.method, test.methods[calledIndex])
 		}
 	}
 }
