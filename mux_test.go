@@ -1916,78 +1916,66 @@ func TestNoMatchMethodErrorHandler(t *testing.T) {
 	}
 }
 
-type methodSubrouterTest struct {
-	title            string
-	router           *Router
-	flags            []bool
-	methods          []string
-	method           string
-	path             string
-	redirectLocation string
+// methodsSubrouterTest models the data necessary for testing handler
+// matching for subrouters created with set HTTP methods.
+type methodsSubrouterTest struct {
+	title      string
+	router     *Router
+	flags      []bool
+	methods    []string
+	method     string
+	path       string
+	redirectTo string
+	wantCode   int
 }
 
-// TestMethodSubrouter creates three sub-routers under the same route
-// for different HTTP methods: GET and HEAD, POST, and DELETE. A different
-// handler that trips its sentinel value is registered for each sub-router.
-func TestMethodSubrouter(t *testing.T) {
+// TestMethodsSubrouter tests the correct matching of handlers for
+// subrouters created after a route's method is set.
+func TestMethodsSubrouter(t *testing.T) {
 	flags1 := make([]bool, 3)
 	router1 := NewRouter()
+	methods1 := []string{http.MethodGet, http.MethodPost, http.MethodDelete}
 	router1.Methods(http.MethodGet, http.MethodHead).Subrouter().HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags1[0] = true })
 	router1.Methods(http.MethodPost).Subrouter().HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags1[1] = true })
 	router1.Methods(http.MethodDelete).Subrouter().HandleFunc("/foo", func(http.ResponseWriter, *http.Request) { flags1[2] = true })
-	methods1 := []string{http.MethodGet, http.MethodPost, http.MethodDelete}
 
 	flags2 := make([]bool, 3)
 	router2 := NewRouter()
+	methods2 := []string{http.MethodGet, http.MethodPost, http.MethodPut}
 	sub2 := router2.PathPrefix("/").Subrouter()
 	sub2.StrictSlash(true).Path("/foo").Methods(http.MethodGet).HandlerFunc(func(http.ResponseWriter, *http.Request) { flags2[0] = true })
 	sub2.StrictSlash(true).Path("/foo/").Methods(http.MethodPost).HandlerFunc(func(http.ResponseWriter, *http.Request) { flags2[1] = true })
 	sub2.StrictSlash(true).Path("/foo/").Methods(http.MethodPut).HandlerFunc(func(http.ResponseWriter, *http.Request) { flags2[2] = true })
-	methods2 := []string{http.MethodGet, http.MethodPost, http.MethodPut}
 
-	flags3 := make([]bool, 3)
+	flags3 := make([]bool, 4)
 	router3 := NewRouter()
-	methods3 := []string{http.MethodPost, http.MethodDelete, http.MethodPut}
+	methods3 := []string{http.MethodPost, http.MethodDelete, http.MethodPut, http.MethodPost}
 	router3.PathPrefix("/1").Methods(methods3[0]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags3[0] = true })
 	router3.PathPrefix("/1").Methods(methods3[1]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags3[1] = true })
 	router3.PathPrefix("/1").Methods(methods3[2]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags3[2] = true })
+	router3.PathPrefix("/1").Methods(methods3[3]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags3[3] = true })
 
-	flags4 := make([]bool, 3)
+	flags4 := make([]bool, 5)
 	router4 := NewRouter()
-	methods4 := []string{http.MethodPost, http.MethodGet, http.MethodPatch}
-	router4.PathPrefix("/1").Subrouter().Methods(methods4[0]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[0] = true }) //.Methods(http.MethodPost)
-	router4.PathPrefix("/1").Subrouter().Methods(methods4[1]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[1] = true })
-	router4.PathPrefix("/1").Subrouter().Methods(methods4[2]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[2] = true })
+	methods4 := []string{http.MethodPost, http.MethodGet, http.MethodPatch, http.MethodPut, http.MethodPost}
+	sub4 := router4.PathPrefix("/1").Subrouter()
+	sub4.Methods(methods4[0]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[0] = true })
+	sub4.Methods(methods4[1]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[1] = true })
+	sub4.Methods(methods4[2]).Subrouter().HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[2] = true })
+	sub4.HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[3] = true }).Subrouter().Methods(methods4[3])
+	sub4.HandleFunc("/2", func(http.ResponseWriter, *http.Request) { flags4[4] = true }).Subrouter().Methods(methods4[4])
 
-	tests := []methodSubrouterTest{
+	tests := []methodsSubrouterTest{
 		{
-			title: "router4, GET method",
-			router: router4,
-			flags: flags4,
-			methods: methods4,
-			method: http.MethodGet,
-			path: "http://localhost/1/2",
-		},
-
-		{
-			title: "router3, DELETE method",
-			router: router3,
-			flags: flags3,
-			methods: methods3,
-			method: http.MethodDelete,
-			path: "http://localhost/1/2",
+			title:   "router1, match GET handler",
+			router:  router1,
+			flags:   flags1,
+			methods: methods1,
+			method:  http.MethodGet,
+			path:    "http://localhost/foo",
 		},
 		{
-			title: "router3, PUT method",
-			router: router3,
-			flags: flags3,
-			methods: methods3,
-			method: http.MethodPut,
-			path: "http://localhost/1/2",
-		},
-
-		{
-			title:   "Call POST on router1",
+			title:   "router1, match POST handler",
 			router:  router1,
 			flags:   flags1,
 			methods: methods1,
@@ -1995,16 +1983,24 @@ func TestMethodSubrouter(t *testing.T) {
 			path:    "http://localhost/foo",
 		},
 		{
-			title:   "Call DELETE on router1",
+			title:   "router1, match DELETE handler",
 			router:  router1,
 			flags:   flags1,
 			methods: methods1,
 			method:  http.MethodDelete,
 			path:    "http://localhost/foo",
 		},
-
 		{
-			title:   "Call POST on router2",
+			title:    "router1, disallow PUT method",
+			router:   router1,
+			flags:    flags1,
+			methods:  methods1,
+			method:   http.MethodPut,
+			path:     "http://localhost/foo",
+			wantCode: http.StatusMethodNotAllowed,
+		},
+		{
+			title:   "router2, match POST handler",
 			router:  router2,
 			flags:   flags2,
 			methods: methods2,
@@ -2012,7 +2008,7 @@ func TestMethodSubrouter(t *testing.T) {
 			path:    "http://localhost/foo/",
 		},
 		{
-			title:   "Call GET on router2",
+			title:   "router2, match GET handler",
 			router:  router2,
 			flags:   flags2,
 			methods: methods2,
@@ -2020,91 +2016,157 @@ func TestMethodSubrouter(t *testing.T) {
 			path:    "http://localhost/foo",
 		},
 		{
-			title:            "Call POST on router2",
-			router:           router2,
-			flags:            flags2,
-			methods:          methods2,
-			method:           http.MethodPost,
-			path:             "http://localhost/foo",
-			redirectLocation: "http://localhost/foo/",
+			title:      "router2, match POST handler, redirect strict-slash",
+			router:     router2,
+			flags:      flags2,
+			methods:    methods2,
+			method:     http.MethodPost,
+			path:       "http://localhost/foo",
+			redirectTo: "http://localhost/foo/",
 		},
 		{
-			title:            "Call GET on router2",
-			router:           router2,
-			flags:            flags2,
-			methods:          methods2,
-			method:           http.MethodGet,
-			path:             "http://localhost/foo/",
-			redirectLocation: "http://localhost/foo",
+			title:      "router2, match GET handler, redirect strict-slash",
+			router:     router2,
+			flags:      flags2,
+			methods:    methods2,
+			method:     http.MethodGet,
+			path:       "http://localhost/foo/",
+			redirectTo: "http://localhost/foo",
+		},
+		{
+			title:    "router2, disallow DELETE method",
+			router:   router2,
+			flags:    flags2,
+			methods:  methods2,
+			method:   http.MethodDelete,
+			path:     "http://localhost/foo",
+			wantCode: http.StatusMethodNotAllowed,
+		},
+		{
+			title:   "router3, match first POST handler",
+			router:  router3,
+			flags:   flags3,
+			methods: methods3,
+			method:  http.MethodPost,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:   "router3, match DELETE handler",
+			router:  router3,
+			flags:   flags3,
+			methods: methods3,
+			method:  http.MethodDelete,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:   "router3, match PUT handler",
+			router:  router3,
+			flags:   flags3,
+			methods: methods3,
+			method:  http.MethodPut,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:    "router3, disallow PATCH method",
+			router:   router3,
+			flags:    flags3,
+			methods:  methods3,
+			method:   http.MethodPatch,
+			path:     "http://localhost/1/2",
+			wantCode: http.StatusMethodNotAllowed,
+		},
+		{
+			title:   "router4, match first POST handler",
+			router:  router4,
+			flags:   flags4,
+			methods: methods4,
+			method:  http.MethodPost,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:   "router4, match GET handler",
+			router:  router4,
+			flags:   flags4,
+			methods: methods4,
+			method:  http.MethodGet,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:   "router4, match PATCH handler",
+			router:  router4,
+			flags:   flags4,
+			methods: methods4,
+			method:  http.MethodPatch,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:   "router4, match PUT handler",
+			router:  router4,
+			flags:   flags4,
+			methods: methods4,
+			method:  http.MethodPut,
+			path:    "http://localhost/1/2",
+		},
+		{
+			title:    "router4, disallow DELETE method",
+			router:   router4,
+			flags:    flags4,
+			methods:  methods4,
+			method:   http.MethodDelete,
+			path:     "http://localhost/1/2",
+			wantCode: http.StatusMethodNotAllowed,
 		},
 	}
 
 	for _, test := range tests {
-		testMethodSubrouter(t, test)
-		// test.reset()
-
-		// req, _ := http.NewRequest(test.method, test.path, nil)
-		// resp := NewRecorder()
-		// test.router.ServeHTTP(resp, req)
-		// calledIndex := -1
-		// targetIndex := -1
-
-		// for i, flag := range test.flags {
-		// 	if flag {
-		// 		calledIndex = i
-		// 	}
-		// }
-		// for i, method := range test.methods {
-		// 	if method == test.method {
-		// 		targetIndex = i
-		// 	}
-		// }
-
-		// isRedirect := resp.Code == http.StatusMovedPermanently || resp.Code == http.StatusFound
-		// // t.Errorf("%s", resp.HeaderMap.Get("Location"))
-		// if isRedirect {
-		// 	if resp.HeaderMap.Get("Location") != test.redirectLocation {
-		// 		t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called %s", test.title, test.method, resp.HeaderMap.Get("Location"))
-		// 	}
-		// } else {
-		// 	if calledIndex < 0 {
-		// 		t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called", test.title, test.method)
-		// 	} else if calledIndex != targetIndex {
-		// 		t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called, but %s was called", test.title, test.method, test.methods[calledIndex])
-		// 	}
-		// }
+		testMethodsSubrouter(t, test)
 	}
 }
 
-func testMethodSubrouter(t *testing.T, test methodSubrouterTest) {
+// testMethodsSubrouter runs an individual methodsSubrouterTest.
+func testMethodsSubrouter(t *testing.T, test methodsSubrouterTest) {
 	// Reset handler flags
 	for i := 0; i < len(test.flags); i++ {
 		test.flags[i] = false
 	}
 
+	// Execute request
 	req, _ := http.NewRequest(test.method, test.path, nil)
 	resp := NewRecorder()
 	test.router.ServeHTTP(resp, req)
+
+	// Get details on request
 	calledIndex := -1
 	targetIndex := -1
-
 	for i, flag := range test.flags {
 		if flag {
 			calledIndex = i
+			break
 		}
 	}
+	// Set first appearance of method
 	for i, method := range test.methods {
 		if method == test.method {
 			targetIndex = i
+			break
 		}
 	}
 
+	// Check for negative cases
 	isRedirect := resp.Code == http.StatusMovedPermanently || resp.Code == http.StatusFound
-	if isRedirect {
-		if resp.HeaderMap.Get("Location") != test.redirectLocation {
+	isNotAllowedMethod := test.wantCode == http.StatusMethodNotAllowed
+	isCalled := calledIndex != -1
+
+	switch {
+	case isRedirect:
+		if resp.HeaderMap.Get("Location") != test.redirectTo {
 			t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called %s", test.title, test.method, resp.HeaderMap.Get("Location"))
 		}
-	} else {
+	case isNotAllowedMethod:
+		if isCalled {
+			t.Errorf("(%v) Expected \"405 Method Not Allowed\", but %s handler was called", test.title, test.methods[calledIndex])
+		}
+	default:
 		if calledIndex < 0 {
 			t.Errorf("(%v) Same-path subrouter handler error: Expected %s handler to be called", test.title, test.method)
 		} else if calledIndex != targetIndex {
