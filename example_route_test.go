@@ -7,6 +7,24 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func someHandler(http.ResponseWriter, *http.Request) {}
+
+// This example demonstrates setting regular expression matchers on a
+// named route. To rebuild the route with key-value pairs, access the
+// builder with `.Get`. Note that only non-capturing groups in
+// the form `(?:[pattern])` are accepted.
+func ExampleRoute_Name() {
+	r := mux.NewRouter()
+	r.HandleFunc("/{filename:\\w*}{format:(?:.json|.xml)?}", someHandler).
+		Name("datafile")
+
+	newUrl, _ := r.Get("datafile").URL("filename", "graph",
+		"format", ".json")
+	fmt.Println(newUrl)
+	// Output:
+	// /graph.json
+}
+
 // This example demonstrates setting a regular expression matcher for
 // the header value. A plain word will match any value that contains a
 // matching substring as if the pattern was wrapped with `.*`.
